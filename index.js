@@ -494,6 +494,76 @@ app.get('/admin/analytics', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
+// Creator Analytics Dashboard
+app.get('/creator/analytics', verifyToken, verifyCreator, async (req, res) => {
+  try {
+    const email = req.decoded.email;
+    const db = getDB();
+
+    // Aggregate Total Prompts and Total Copies for this creator
+    const promptsAgg = await db.collection('prompts').aggregate([
+      { $match: { creatorEmail: email } },
+      {
+        $group: {
+          _id: null,
+          totalPrompts: { $sum: 1 },
+          totalCopies: { $sum: '$copyCount' }
+        }
+      }
+    ]).toArray();
+    
+    const totalPrompts = promptsAgg[0]?.totalPrompts || 0;
+    const totalCopies = promptsAgg[0]?.totalCopies || 0;
+
+    // Aggregate Total Bookmarks for this creator's prompts
+    const bookmarksAgg = await db.collection('bookmarks').aggregate([
+      {
+        $lookup: {
+          from: 'prompts',
+          let: { pid: { $toObjectId: '$promptId' } },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$pid'] } } }
+          ],
+          as: 'promptDetails'
+        }
+      },
+      { $unwind: '$promptDetails' },
+      { $match: { 'promptDetails.creatorEmail': email } },
+      { $count: 'totalBookmarks' }
+    ]).toArray();
+    
+    const totalBookmarks = bookmarksAgg[0]?.totalBookmarks || 0;
+
+    // Recharts data: Prompt Growth over time
+    const chartData = await db.collection('prompts').aggregate([
+      { $match: { creatorEmail: email } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          promptsAdded: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } },
+      {
+        $project: {
+          date: '$_id',
+          promptsAdded: 1,
+          _id: 0
+        }
+      }
+    ]).toArray();
+
+    res.send({
+      totalPrompts,
+      totalCopies,
+      totalBookmarks,
+      chartData
+    });
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching creator analytics', error });
+  }
+});
+
 // Basic root endpoint
 app.get('/', (req, res) => {
   res.send('Server is running');

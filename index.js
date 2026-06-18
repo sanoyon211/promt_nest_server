@@ -379,6 +379,35 @@ app.get('/prompts/:id/reviews', async (req, res) => {
   }
 });
 
+// Report a prompt
+app.post('/prompts/:id/report', verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: 'Invalid ID format' });
+    }
+
+    const { reason, description } = req.body;
+    if (!reason) {
+      return res.status(400).send({ message: 'Report reason is required' });
+    }
+
+    const db = getDB();
+    const report = {
+      promptId: id,
+      reporterEmail: req.decoded.email,
+      reason,
+      description: description || '',
+      reportedAt: new Date()
+    };
+
+    const result = await db.collection('reported_prompts').insertOne(report);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error submitting report', error });
+  }
+});
+
 // Basic root endpoint
 app.get('/', (req, res) => {
   res.send('Server is running');

@@ -159,6 +159,77 @@ app.post('/prompts', verifyToken, async (req, res) => {
   }
 });
 
+// Fetch all public and approved prompts with search, filter, sort, and pagination
+app.get('/prompts', async (req, res) => {
+  try {
+    const db = getDB();
+    const {
+      search,
+      category,
+      aiTool,
+      difficulty,
+      sort,
+      page = 1,
+      limit = 10
+    } = req.query;
+
+    // Base query: only public and approved
+    const query = {
+      visibility: 'Public',
+      status: 'approved'
+    };
+
+    // 1. Search logic
+    if (search) {
+      const searchRegex = new RegExp(search, 'i');
+      query.$or = [
+        { title: searchRegex },
+        { tags: searchRegex },
+        { aiTool: searchRegex }
+      ];
+    }
+
+    // 2. Filter logic
+    if (category) query.category = category;
+    if (aiTool) query.aiTool = aiTool;
+    if (difficulty) query.difficultyLevel = difficulty;
+
+    // 3. Sort logic
+    let sortObj = { createdAt: -1 }; // Default: Latest
+    if (sort === 'most-copied') {
+      sortObj = { copyCount: -1 };
+    } else if (sort === 'most-popular') {
+      sortObj = { rating: -1 }; // Assuming rating exists
+    } else if (sort === 'latest') {
+      sortObj = { createdAt: -1 };
+    }
+
+    // 4. Pagination logic
+    const pageNumber = parseInt(page);
+    const limitNumber = parseInt(limit);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    const prompts = await db.collection('prompts')
+      .find(query)
+      .sort(sortObj)
+      .skip(skip)
+      .limit(limitNumber)
+      .toArray();
+
+    const total = await db.collection('prompts').countDocuments(query);
+
+    res.send({
+      data: prompts,
+      total,
+      page: pageNumber,
+      totalPages: Math.ceil(total / limitNumber)
+    });
+
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching prompts', error });
+  }
+});
+
 // Basic root endpoint
 app.get('/', (req, res) => {
   res.send('Server is running');

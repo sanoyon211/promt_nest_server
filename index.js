@@ -657,9 +657,77 @@ app.patch('/admin/reports/:id/manage', verifyToken, verifyAdmin, async (req, res
   }
 });
 
+// Update own prompt
+app.put('/prompts/:id', verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) return res.status(400).send({ message: 'Invalid ID format' });
+    
+    const db = getDB();
+    const prompt = await db.collection('prompts').findOne({ _id: new ObjectId(id) });
+    if (!prompt) return res.status(404).send({ message: 'Prompt not found' });
+    
+    if (prompt.creatorEmail !== req.decoded.email) {
+      return res.status(403).send({ message: 'You can only update your own prompts' });
+    }
+    
+    // Prevent updating restricted fields
+    const { _id, creatorEmail, createdAt, copyCount, status, ...updateFields } = req.body;
+    updateFields.updatedAt = new Date();
+    
+    const result = await db.collection('prompts').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateFields }
+    );
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error updating prompt', error });
+  }
+});
+
+// Delete own prompt
+app.delete('/prompts/:id', verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) return res.status(400).send({ message: 'Invalid ID format' });
+    
+    const db = getDB();
+    const prompt = await db.collection('prompts').findOne({ _id: new ObjectId(id) });
+    if (!prompt) return res.status(404).send({ message: 'Prompt not found' });
+    
+    if (prompt.creatorEmail !== req.decoded.email) {
+      return res.status(403).send({ message: 'You can only delete your own prompts' });
+    }
+    
+    const result = await db.collection('prompts').deleteOne({ _id: new ObjectId(id) });
+    // Also cleanup related data
+    await db.collection('reviews').deleteMany({ promptId: id });
+    await db.collection('bookmarks').deleteMany({ promptId: id });
+    await db.collection('reported_prompts').deleteMany({ promptId: id });
+    
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error deleting prompt', error });
+  }
+});
+
 // Basic root endpoint
 app.get('/', (req, res) => {
   res.send('Server is running');
+});
+
+// 404 Route Handler
+app.use((req, res, next) => {
+  res.status(404).send({ message: 'API Route Not Found' });
+});
+
+// Global Error Handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(err.status || 500).send({
+    message: err.message || 'Internal Server Error',
+    error: process.env.NODE_ENV === 'development' ? err : {}
+  });
 });
 
 connectDB().then(() => {

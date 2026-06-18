@@ -279,6 +279,49 @@ app.get('/prompts/:id', async (req, res) => {
   }
 });
 
+// Toggle bookmark for a prompt
+app.post('/prompts/:id/bookmark', verifyToken, async (req, res) => {
+  try {
+    const promptId = req.params.id;
+    if (!ObjectId.isValid(promptId)) {
+      return res.status(400).send({ message: 'Invalid ID format' });
+    }
+    
+    const email = req.decoded.email;
+    const db = getDB();
+    
+    const bookmark = await db.collection('bookmarks').findOne({ email, promptId });
+    if (bookmark) {
+      await db.collection('bookmarks').deleteOne({ _id: bookmark._id });
+      res.send({ message: 'Bookmark removed', isBookmarked: false });
+    } else {
+      await db.collection('bookmarks').insertOne({ email, promptId, createdAt: new Date() });
+      res.send({ message: 'Bookmark added', isBookmarked: true });
+    }
+  } catch (error) {
+    res.status(500).send({ message: 'Error toggling bookmark', error });
+  }
+});
+
+// Increment copy count
+app.patch('/prompts/:id/copy', async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: 'Invalid ID format' });
+    }
+    
+    const db = getDB();
+    const result = await db.collection('prompts').updateOne(
+      { _id: new ObjectId(id) },
+      { $inc: { copyCount: 1 } }
+    );
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error updating copy count', error });
+  }
+});
+
 // Basic root endpoint
 app.get('/', (req, res) => {
   res.send('Server is running');

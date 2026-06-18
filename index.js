@@ -452,6 +452,48 @@ app.post('/payments', verifyToken, async (req, res) => {
   }
 });
 
+// Admin Analytics Dashboard
+app.get('/admin/analytics', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const db = getDB();
+
+    // Aggregate Total Users
+    const usersAgg = await db.collection('users').aggregate([
+      { $count: 'totalUsers' }
+    ]).toArray();
+    const totalUsers = usersAgg[0]?.totalUsers || 0;
+
+    // Aggregate Total Reviews
+    const reviewsAgg = await db.collection('reviews').aggregate([
+      { $count: 'totalReviews' }
+    ]).toArray();
+    const totalReviews = reviewsAgg[0]?.totalReviews || 0;
+
+    // Aggregate Total Prompts and Total Copies
+    const promptsAgg = await db.collection('prompts').aggregate([
+      {
+        $group: {
+          _id: null,
+          totalPrompts: { $sum: 1 },
+          totalCopies: { $sum: '$copyCount' }
+        }
+      }
+    ]).toArray();
+    
+    const totalPrompts = promptsAgg[0]?.totalPrompts || 0;
+    const totalCopies = promptsAgg[0]?.totalCopies || 0;
+
+    res.send({
+      totalUsers,
+      totalPrompts,
+      totalReviews,
+      totalCopies
+    });
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching analytics', error });
+  }
+});
+
 // Basic root endpoint
 app.get('/', (req, res) => {
   res.send('Server is running');

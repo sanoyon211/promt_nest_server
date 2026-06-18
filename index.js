@@ -322,6 +322,63 @@ app.patch('/prompts/:id/copy', async (req, res) => {
   }
 });
 
+// Add a review for a prompt
+app.post('/prompts/:id/reviews', verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: 'Invalid ID format' });
+    }
+
+    const db = getDB();
+    const prompt = await db.collection('prompts').findOne({ _id: new ObjectId(id) });
+    if (!prompt) {
+      return res.status(404).send({ message: 'Prompt not found' });
+    }
+
+    // Check visibility / access
+    if (prompt.visibility === 'Private') {
+      const email = req.decoded.email;
+      const user = await db.collection('users').findOne({ email });
+      const isPremium = user && (user.subscription === 'Premium' || user.email === prompt.creatorEmail);
+      if (!isPremium) {
+        return res.status(403).send({ message: 'You must have access to the full prompt to review it.' });
+      }
+    }
+
+    const { rating, comment, name } = req.body;
+    const review = {
+      promptId: id,
+      rating,
+      comment,
+      name,
+      email: req.decoded.email,
+      date: new Date()
+    };
+
+    const result = await db.collection('reviews').insertOne(review);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error submitting review', error });
+  }
+});
+
+// Get reviews for a prompt
+app.get('/prompts/:id/reviews', async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: 'Invalid ID format' });
+    }
+
+    const db = getDB();
+    const reviews = await db.collection('reviews').find({ promptId: id }).sort({ date: -1 }).toArray();
+    res.send(reviews);
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching reviews', error });
+  }
+});
+
 // Basic root endpoint
 app.get('/', (req, res) => {
   res.send('Server is running');

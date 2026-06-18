@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
+const { ObjectId } = require('mongodb');
 const { connectDB, getDB } = require('./db');
 
 const app = express();
@@ -227,6 +228,54 @@ app.get('/prompts', async (req, res) => {
 
   } catch (error) {
     res.status(500).send({ message: 'Error fetching prompts', error });
+  }
+});
+
+// Fetch single prompt by ID with visibility logic
+app.get('/prompts/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: 'Invalid ID format' });
+    }
+
+    const db = getDB();
+    const prompt = await db.collection('prompts').findOne({ _id: new ObjectId(id) });
+
+    if (!prompt) {
+      return res.status(404).send({ message: 'Prompt not found' });
+    }
+
+    // Visibility logic
+    if (prompt.visibility === 'Private') {
+      let isPremium = false;
+
+      // Check if user is authenticated and has premium
+      const authHeader = req.headers.authorization;
+      if (authHeader) {
+        const token = authHeader.split(' ')[1];
+        try {
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          const user = await db.collection('users').findOne({ email: decoded.email });
+          // Let the creator view their own private prompt, or a Premium user
+          if (user && (user.subscription === 'Premium' || user.email === prompt.creatorEmail)) {
+            isPremium = true;
+          }
+        } catch (e) {
+          // Token invalid or expired, ignore and treat as non-premium
+        }
+      }
+
+      if (!isPremium) {
+        // Return a locked/blurred version
+        prompt.content = 'This content is locked. Upgrade to Premium to view.';
+        prompt.isLocked = true;
+      }
+    }
+
+    res.send(prompt);
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching prompt', error });
   }
 });
 

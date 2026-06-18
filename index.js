@@ -564,6 +564,99 @@ app.get('/creator/analytics', verifyToken, verifyCreator, async (req, res) => {
   }
 });
 
+// 1. Approve/Reject a prompt
+app.patch('/admin/prompts/:id/status', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) return res.status(400).send({ message: 'Invalid ID format' });
+    
+    const { status, feedback } = req.body;
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).send({ message: 'Status must be "approved" or "rejected"' });
+    }
+    
+    const updateDoc = { $set: { status } };
+    if (status === 'rejected' && feedback) {
+      updateDoc.$set.feedback = feedback;
+    }
+    
+    const result = await getDB().collection('prompts').updateOne({ _id: new ObjectId(id) }, updateDoc);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error updating prompt status', error });
+  }
+});
+
+// 2. Change a user's role
+app.patch('/admin/users/:email/role', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const email = req.params.email;
+    const { role } = req.body;
+    const result = await getDB().collection('users').updateOne(
+      { email },
+      { $set: { role } }
+    );
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error updating user role', error });
+  }
+});
+
+// 3. Delete a user
+app.delete('/admin/users/:email', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const email = req.params.email;
+    const result = await getDB().collection('users').deleteOne({ email });
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error deleting user', error });
+  }
+});
+
+// 4. Manage reported prompts
+app.patch('/admin/reports/:id/manage', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const reportId = req.params.id;
+    if (!ObjectId.isValid(reportId)) return res.status(400).send({ message: 'Invalid ID format' });
+    
+    const { action } = req.body; // 'remove', 'warn', 'dismiss'
+    const db = getDB();
+    
+    const report = await db.collection('reported_prompts').findOne({ _id: new ObjectId(reportId) });
+    if (!report) return res.status(404).send({ message: 'Report not found' });
+    
+    if (action === 'dismiss') {
+      await db.collection('reported_prompts').deleteOne({ _id: new ObjectId(reportId) });
+      return res.send({ message: 'Report dismissed successfully' });
+    } 
+    else if (action === 'warn') {
+      const prompt = await db.collection('prompts').findOne({ _id: new ObjectId(report.promptId) });
+      if (prompt) {
+        await db.collection('users').updateOne(
+          { email: prompt.creatorEmail },
+          { $push: { warnings: { reason: report.reason, date: new Date() } } }
+        );
+      }
+      await db.collection('reported_prompts').updateOne(
+        { _id: new ObjectId(reportId) },
+        { $set: { status: 'warned_resolved' } }
+      );
+      return res.send({ message: 'Creator warned and report resolved' });
+    } 
+    else if (action === 'remove') {
+      await db.collection('prompts').deleteOne({ _id: new ObjectId(report.promptId) });
+      // Delete all reports related to this prompt
+      await db.collection('reported_prompts').deleteMany({ promptId: report.promptId });
+      return res.send({ message: 'Prompt removed and related reports deleted' });
+    }
+    else {
+      return res.status(400).send({ message: 'Invalid action specified' });
+    }
+  } catch (error) {
+    res.status(500).send({ message: 'Error managing report', error });
+  }
+});
+
 // Basic root endpoint
 app.get('/', (req, res) => {
   res.send('Server is running');

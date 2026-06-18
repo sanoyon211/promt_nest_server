@@ -112,6 +112,53 @@ app.get('/users/:email', verifyToken, async (req, res) => {
   }
 });
 
+// Add a new prompt
+app.post('/prompts', verifyToken, async (req, res) => {
+  try {
+    const email = req.decoded.email;
+    const db = getDB();
+    
+    // Check user subscription and prompt count
+    const user = await db.collection('users').findOne({ email });
+    if (!user) {
+      return res.status(404).send({ message: 'User not found' });
+    }
+    
+    if (user.subscription === 'Free') {
+      const promptCount = await db.collection('prompts').countDocuments({ creatorEmail: email });
+      if (promptCount >= 3) {
+        return res.status(403).send({ message: 'Free users can only add a maximum of 3 prompts.' });
+      }
+    }
+    
+    // Extract and format the prompt data
+    const {
+      title, description, content, category, aiTool, tags, difficultyLevel, thumbnailImage, visibility
+    } = req.body;
+    
+    const newPrompt = {
+      title,
+      description,
+      content,
+      category,
+      aiTool,
+      tags: tags || [],
+      difficultyLevel,
+      thumbnailImage,
+      visibility: visibility || 'Public',
+      status: 'pending',
+      copyCount: 0,
+      creatorEmail: email,
+      createdAt: new Date()
+    };
+    
+    const result = await db.collection('prompts').insertOne(newPrompt);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error adding prompt', error });
+  }
+});
+
 // Basic root endpoint
 app.get('/', (req, res) => {
   res.send('Server is running');

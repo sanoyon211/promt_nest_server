@@ -453,6 +453,27 @@ app.post('/payments', verifyToken, async (req, res) => {
   }
 });
 
+// Regular User Analytics Dashboard
+app.get('/user/analytics', verifyToken, async (req, res) => {
+  try {
+    const email = req.decoded.email;
+    const db = getDB();
+
+    // Count user's total prompts
+    const totalPrompts = await db.collection('prompts').countDocuments({ creatorEmail: email });
+
+    // Count user's total bookmarks
+    const totalBookmarks = await db.collection('bookmarks').countDocuments({ email: email });
+
+    res.send({
+      totalPrompts,
+      totalBookmarks
+    });
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching user analytics', error });
+  }
+});
+
 // Admin Analytics Dashboard
 app.get('/admin/analytics', verifyToken, verifyAdmin, async (req, res) => {
   try {

@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 // CORS configuration to allow cross-origin requests securely
 app.use(cors({
   origin: process.env.CORS_ORIGIN || '*', // Update this in production to your actual frontend domain
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 

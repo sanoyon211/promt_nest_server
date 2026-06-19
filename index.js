@@ -587,6 +587,17 @@ app.patch('/admin/prompts/:id/status', verifyToken, verifyAdmin, async (req, res
   }
 });
 
+// 1.5. Get all users for admin
+app.get('/admin/users', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const db = getDB();
+    const users = await db.collection('users').find().sort({ createdAt: -1 }).toArray();
+    res.send(users);
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching users', error });
+  }
+});
+
 // 2. Change a user's role
 app.patch('/admin/users/:email/role', verifyToken, verifyAdmin, async (req, res) => {
   try {

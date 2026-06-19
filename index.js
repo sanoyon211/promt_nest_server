@@ -42,7 +42,7 @@ const verifyAdmin = async (req, res, next) => {
     const email = req.decoded.email;
     const db = getDB();
     const user = await db.collection('users').findOne({ email });
-    if (user?.role !== 'Admin') {
+    if (user?.role?.toLowerCase() !== 'admin') {
       return res.status(403).send({ message: 'Forbidden access' });
     }
     next();
@@ -57,7 +57,7 @@ const verifyCreator = async (req, res, next) => {
     const email = req.decoded.email;
     const db = getDB();
     const user = await db.collection('users').findOne({ email });
-    if (user?.role !== 'Creator') {
+    if (user?.role?.toLowerCase() !== 'creator' && user?.role?.toLowerCase() !== 'admin') {
       return res.status(403).send({ message: 'Forbidden access' });
     }
     next();
@@ -83,6 +83,7 @@ app.post('/users', async (req, res) => {
     const user = req.body;
     user.role = user.role || 'User';
     user.subscription = user.subscription || 'Free';
+    user.createdAt = new Date();
     
     const db = getDB();
     const existingUser = await db.collection('users').findOne({ email: user.email });

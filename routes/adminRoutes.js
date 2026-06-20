@@ -1,0 +1,216 @@
+const express = require('express');
+const { ObjectId } = require('mongodb');
+const { getDB } = require('../db');
+const { verifyToken, verifyAdmin } = require('../middlewares/authMiddleware');
+
+const router = express.Router();
+
+router.get('/admin/reports', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const db = getDB();
+    const reports = await db.collection('reported_prompts').aggregate([
+      { $addFields: { promptObjId: { $toObjectId: "$promptId" } } },
+      {
+        $lookup: {
+          from: "prompts",
+          localField: "promptObjId",
+          foreignField: "_id",
+          as: "prompt"
+        }
+      },
+      { $unwind: { path: "$prompt", preserveNullAndEmptyArrays: true } },
+      { $sort: { reportedAt: -1 } }
+    ]).toArray();
+    res.send(reports);
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching reports', error });
+  }
+});
+
+// Get all prompts for Admin (with pagination)
+router.get('/admin/prompts', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const db = getDB();
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const prompts = await db.collection('prompts').find().sort({ createdAt: -1 }).skip(skip).limit(limit).toArray();
+    const total = await db.collection('prompts').countDocuments();
+
+    res.send({ data: prompts, total, page, totalPages: Math.ceil(total / limit) });
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching admin prompts', error });
+  }
+});
+
+// Get all payments for Admin
+router.get('/admin/payments', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const db = getDB();
+    const payments = await db.collection('payments').find().sort({ date: -1 }).toArray();
+    res.send(payments);
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching payments', error });
+  }
+});
+
+// Admin Analytics Dashboard
+router.get('/admin/analytics', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const db = getDB();
+
+    // Aggregate Total Users
+    const usersAgg = await db.collection('users').aggregate([{ $count: 'totalUsers' }]).toArray();
+    const totalUsers = usersAgg[0]?.totalUsers || 0;
+
+    // Aggregate Total Reviews
+    const reviewsAgg = await db.collection('reviews').aggregate([{ $count: 'totalReviews' }]).toArray();
+    const totalReviews = reviewsAgg[0]?.totalReviews || 0;
+
+    // Aggregate Revenue
+    const revenueAgg = await db.collection('payments').aggregate([
+      { $match: { status: 'succeeded' } },
+      { $group: { _id: null, totalRevenue: { $sum: "$amount" } } }
+    ]).toArray();
+    const totalRevenue = revenueAgg[0]?.totalRevenue || 0;
+
+    // Fetch Prompts Stats
+    const totalPromptsAgg = await db.collection('prompts').aggregate([{ $count: 'totalPrompts' }]).toArray();
+    const totalPrompts = totalPromptsAgg[0]?.totalPrompts || 0;
+
+    res.send({
+      totalUsers,
+      totalPrompts,
+      totalReviews,
+      totalRevenue
+    });
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching admin analytics', error });
+  }
+});
+
+router.patch('/admin/prompts/:id/status', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) return res.status(400).send({ message: 'Invalid ID format' });
+    
+    const { status, feedback } = req.body;
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).send({ message: 'Status must be "approved" or "rejected"' });
+    }
+    
+    const updateDoc = { $set: { status } };
+    if (status === 'rejected' && feedback) {
+      updateDoc.$set.feedback = feedback;
+    }
+    
+    const result = await getDB().collection('prompts').updateOne({ _id: new ObjectId(id) }, updateDoc);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error updating prompt status', error });
+  }
+});
+
+// Feature a prompt
+router.post('/admin/prompts/:id/feature', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) return res.status(400).send({ message: 'Invalid ID format' });
+    
+    const db = getDB();
+    const prompt = await db.collection('prompts').findOne({ _id: new ObjectId(id) });
+    const isCurrentlyFeatured = prompt.isFeatured || false;
+
+    const result = await db.collection('prompts').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { isFeatured: !isCurrentlyFeatured } }
+    );
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error toggling prompt feature', error });
+  }
+});
+
+// 1.5. Get all users for admin
+router.get('/admin/users', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const db = getDB();
+    const users = await db.collection('users').find().sort({ createdAt: -1 }).toArray();
+    res.send(users);
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching users', error });
+  }
+});
+
+// 2. Change a user's role
+router.patch('/admin/users/:email/role', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const email = req.params.email;
+    const { role } = req.body;
+    const result = await getDB().collection('users').updateOne(
+      { email },
+      { $set: { role } }
+    );
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error updating user role', error });
+  }
+});
+
+// 3. Delete a user
+router.delete('/admin/users/:email', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const email = req.params.email;
+    const result = await getDB().collection('users').deleteOne({ email });
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error deleting user', error });
+  }
+});
+
+// 4. Manage reported prompts
+router.patch('/admin/reports/:id/manage', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const reportId = req.params.id;
+    if (!ObjectId.isValid(reportId)) return res.status(400).send({ message: 'Invalid ID format' });
+    
+    const { action } = req.body; // 'remove', 'warn', 'dismiss'
+    const db = getDB();
+    
+    const report = await db.collection('reported_prompts').findOne({ _id: new ObjectId(reportId) });
+    if (!report) return res.status(404).send({ message: 'Report not found' });
+    
+    if (action === 'dismiss') {
+      await db.collection('reported_prompts').deleteOne({ _id: new ObjectId(reportId) });
+      return res.send({ message: 'Report dismissed successfully' });
+    } 
+    else if (action === 'warn') {
+      const prompt = await db.collection('prompts').findOne({ _id: new ObjectId(report.promptId) });
+      if (prompt) {
+        await db.collection('users').updateOne(
+          { email: prompt.creatorEmail },
+          { $push: { warnings: { reason: report.reason, date: new Date() } } }
+        );
+      }
+      await db.collection('reported_prompts').updateOne(
+        { _id: new ObjectId(reportId) },
+        { $set: { status: 'warned_resolved' } }
+      );
+      return res.send({ message: 'Creator warned and report resolved' });
+    } 
+    else if (action === 'remove') {
+      await db.collection('prompts').deleteOne({ _id: new ObjectId(report.promptId) });
+      // Delete all reports related to this prompt
+      await db.collection('reported_prompts').deleteMany({ promptId: report.promptId });
+      return res.send({ message: 'Prompt removed and related reports deleted' });
+    }
+    else {
+      return res.status(400).send({ message: 'Invalid action specified' });
+    }
+  } catch (error) {
+    res.status(500).send({ message: 'Error managing report', error });
+  }
+});
+
+module.exports = router;

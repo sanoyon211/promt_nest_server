@@ -81,17 +81,23 @@ app.post('/jwt', (req, res) => {
 app.post('/users', async (req, res) => {
   try {
     const user = req.body;
-    user.role = user.role || 'User';
-    user.subscription = user.subscription || 'Free';
-    user.createdAt = new Date();
     
     const db = getDB();
     const existingUser = await db.collection('users').findOne({ email: user.email });
     
     if (existingUser) {
+      if (user.name && user.name !== 'Unknown User') {
+        await db.collection('users').updateOne(
+          { email: user.email },
+          { $set: { name: user.name, photoURL: user.photoURL } }
+        );
+      }
       return res.send({ message: 'User already exists', insertedId: null });
     }
     
+    user.role = user.role || 'User';
+    user.subscription = user.subscription || 'Free';
+    user.createdAt = new Date();
     const result = await db.collection('users').insertOne(user);
     res.send(result);
   } catch (error) {

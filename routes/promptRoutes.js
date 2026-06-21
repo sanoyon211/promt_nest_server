@@ -103,6 +103,23 @@ router.post('/prompts', verifyToken, async (req, res) => {
   }
 });
 
+// Fetch distinct categories and AI tools
+router.get('/prompts/filters', async (req, res) => {
+  try {
+    const db = getDB();
+    const categories = await db.collection('prompts').distinct('category');
+    const aiTools = await db.collection('prompts').distinct('aiTool');
+    
+    // Filter out falsy values just in case
+    res.send({
+      categories: categories.filter(Boolean),
+      aiTools: aiTools.filter(Boolean)
+    });
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching filters', error });
+  }
+});
+
 // Fetch all public and approved prompts with search, filter, sort, and pagination
 router.get('/prompts', async (req, res) => {
   try {

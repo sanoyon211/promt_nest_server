@@ -318,6 +318,48 @@ router.post('/prompts/:id/report', verifyToken, async (req, res) => {
   }
 });
 
+// Update own prompt
+router.put('/prompts/:id', verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) return res.status(400).send({ message: 'Invalid ID format' });
+    
+    const db = getDB();
+    const prompt = await db.collection('prompts').findOne({ _id: new ObjectId(id) });
+    if (!prompt) return res.status(404).send({ message: 'Prompt not found' });
+    
+    if (prompt.creatorEmail !== req.decoded.email) {
+      return res.status(403).send({ message: 'You can only update your own prompts' });
+    }
+    
+    const {
+      title, description, content, category, aiTool, tags, difficultyLevel, thumbnailImage, visibility
+    } = req.body;
+    
+    const updateDoc = {
+      $set: {
+        title: title || prompt.title,
+        description: description || prompt.description,
+        content: content || prompt.content,
+        category: category || prompt.category,
+        aiTool: aiTool || prompt.aiTool,
+        tags: tags || prompt.tags,
+        difficultyLevel: difficultyLevel || prompt.difficultyLevel,
+        thumbnailImage: thumbnailImage || prompt.thumbnailImage,
+        visibility: visibility || prompt.visibility,
+        // Optional: revert to pending status on edit
+        // status: 'pending',
+        updatedAt: new Date()
+      }
+    };
+    
+    const result = await db.collection('prompts').updateOne({ _id: new ObjectId(id) }, updateDoc);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error updating prompt', error });
+  }
+});
+
 // Delete own prompt
 router.delete('/prompts/:id', verifyToken, async (req, res) => {
   try {
@@ -381,6 +423,18 @@ router.post('/prompts/:id/reviews', verifyToken, async (req, res) => {
     res.send(result);
   } catch (error) {
     res.status(500).send({ message: 'Error submitting review', error });
+  }
+});
+
+// Get all reviews (for homepage slider)
+router.get('/reviews', async (req, res) => {
+  try {
+    const db = getDB();
+    // Fetch 15 latest reviews with at least 4 star rating
+    const reviews = await db.collection('reviews').find({ rating: { $gte: 4 } }).sort({ date: -1 }).limit(15).toArray();
+    res.send(reviews);
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching recent reviews', error });
   }
 });
 

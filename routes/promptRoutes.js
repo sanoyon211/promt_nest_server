@@ -400,4 +400,29 @@ router.get('/prompts/:id/reviews', async (req, res) => {
   }
 });
 
+// Delete own review
+router.delete('/reviews/:id', verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: 'Invalid ID format' });
+    }
+
+    const db = getDB();
+    const review = await db.collection('reviews').findOne({ _id: new ObjectId(id) });
+    if (!review) {
+      return res.status(404).send({ message: 'Review not found' });
+    }
+
+    if (review.email !== req.decoded.email) {
+      return res.status(403).send({ message: 'You can only delete your own reviews' });
+    }
+
+    const result = await db.collection('reviews').deleteOne({ _id: new ObjectId(id) });
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: 'Error deleting review', error });
+  }
+});
+
 module.exports = router;

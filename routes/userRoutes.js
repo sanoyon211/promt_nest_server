@@ -131,4 +131,104 @@ router.get('/user/analytics', verifyToken, async (req, res) => {
   }
 });
 
+// Creator Analytics Dashboard
+router.get('/creator/analytics', verifyToken, async (req, res) => {
+  try {
+    const email = req.decoded.email;
+    const db = getDB();
+
+    // 1. Total Prompts authored by this creator
+    const totalPrompts = await db.collection('prompts').countDocuments({ creatorEmail: email });
+
+    // 2. Fetch all prompt IDs authored by this creator
+    const creatorPrompts = await db.collection('prompts').find({ creatorEmail: email }, { projection: { _id: 1, copyCount: 1 } }).toArray();
+    const promptIds = creatorPrompts.map(p => p._id.toString());
+
+    // 3. Total Copies
+    const totalCopies = creatorPrompts.reduce((sum, p) => sum + (p.copyCount || 0), 0);
+
+    // 4. Total Bookmarks (how many times this creator's prompts were bookmarked)
+    const totalBookmarks = await db.collection('bookmarks').countDocuments({ promptId: { $in: promptIds } });
+
+    // 5. Chart Data (Prompt Growth over 6 months)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const chartDataMap = {};
+    for (let i = 0; i < 6; i++) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - (5 - i));
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      chartDataMap[key] = { name: monthNames[d.getMonth()], prompts: 0, order: i };
+    }
+
+    const promptsByMonth = await db.collection('prompts').aggregate([
+      { $match: { creatorEmail: email, createdAt: { $gte: sixMonthsAgo } } },
+      { $group: {
+          _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+          count: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    promptsByMonth.forEach(item => {
+      if (item._id.month) {
+        const key = `${item._id.year}-${item._id.month - 1}`;
+        if (chartDataMap[key]) {
+          chartDataMap[key].prompts = item.count;
+        }
+      }
+    });
+
+    const chartData = Object.values(chartDataMap).sort((a, b) => a.order - b.order).map(({ name, prompts }) => ({ name, prompts }));
+
+    // 6. Daily Copies (Last 7 Days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const dailyCopiesMap = {};
+    for (let i = 0; i < 7; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      dailyCopiesMap[key] = { day: dayNames[d.getDay()], copies: 0, order: i };
+    }
+
+    const copiesByDay = await db.collection('copied_prompts').aggregate([
+      { $match: { promptId: { $in: promptIds }, copiedAt: { $gte: sevenDaysAgo } } },
+      { $group: {
+          _id: { year: { $year: "$copiedAt" }, month: { $month: "$copiedAt" }, day: { $dayOfMonth: "$copiedAt" } },
+          count: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    copiesByDay.forEach(item => {
+      if (item._id.month) {
+        const key = `${item._id.year}-${item._id.month - 1}-${item._id.day}`;
+        if (dailyCopiesMap[key]) {
+          dailyCopiesMap[key].copies = item.count;
+        }
+      }
+    });
+
+    const dailyCopiesData = Object.values(dailyCopiesMap).sort((a, b) => a.order - b.order).map(({ day, copies }) => ({ day, copies }));
+
+    res.send({
+      totalPrompts,
+      totalBookmarks,
+      totalCopies,
+      chartData,
+      dailyCopiesData
+    });
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching creator analytics', error });
+  }
+});
+
 module.exports = router;

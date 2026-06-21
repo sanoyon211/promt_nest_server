@@ -306,4 +306,74 @@ router.patch('/admin/reports/:id/manage', verifyToken, verifyAdmin, async (req, 
   }
 });
 
+// 5. Delete a prompt (Admin)
+router.delete('/admin/prompts/:id', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) return res.status(400).send({ message: 'Invalid ID format' });
+    
+    const db = getDB();
+    const prompt = await db.collection('prompts').findOne({ _id: new ObjectId(id) });
+    if (!prompt) return res.status(404).send({ message: 'Prompt not found' });
+    
+    const result = await db.collection('prompts').deleteOne({ _id: new ObjectId(id) });
+    // Cleanup related data
+    await db.collection('reviews').deleteMany({ promptId: id });
+    await db.collection('bookmarks').deleteMany({ promptId: id });
+    await db.collection('reported_prompts').deleteMany({ promptId: id });
+    
+    res.send({ message: 'Prompt deleted successfully', result });
+  } catch (error) {
+    res.status(500).send({ message: 'Error deleting prompt', error });
+  }
+});
+
+// 6. Get System Settings
+router.get('/admin/settings', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const db = getDB();
+    let settings = await db.collection('settings').findOne({ type: 'global_settings' });
+    if (!settings) {
+      settings = {
+        siteName: 'PromptNest',
+        contactEmail: 'admin@promptnest.com',
+        maintenanceMode: false,
+        requireEmailVerification: true,
+        maxPromptsPerUser: 3
+      };
+    }
+    res.send(settings);
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching settings', error });
+  }
+});
+
+// 7. Save System Settings
+router.post('/admin/settings', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const db = getDB();
+    const { siteName, contactEmail, maintenanceMode, requireEmailVerification, maxPromptsPerUser } = req.body;
+    
+    const updateDoc = {
+      $set: {
+        siteName,
+        contactEmail,
+        maintenanceMode,
+        requireEmailVerification,
+        maxPromptsPerUser,
+        updatedAt: new Date()
+      }
+    };
+    
+    const result = await db.collection('settings').updateOne(
+      { type: 'global_settings' },
+      updateDoc,
+      { upsert: true }
+    );
+    res.send({ message: 'Settings saved successfully', result });
+  } catch (error) {
+    res.status(500).send({ message: 'Error saving settings', error });
+  }
+});
+
 module.exports = router;

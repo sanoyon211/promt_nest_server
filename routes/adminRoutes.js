@@ -79,11 +79,67 @@ router.get('/admin/analytics', verifyToken, verifyAdmin, async (req, res) => {
     const totalPromptsAgg = await db.collection('prompts').aggregate([{ $count: 'totalPrompts' }]).toArray();
     const totalPrompts = totalPromptsAgg[0]?.totalPrompts || 0;
 
+    // Generate last 6 months chart data
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const chartDataMap = {};
+    for (let i = 0; i < 6; i++) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - (5 - i));
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      chartDataMap[key] = { name: monthNames[d.getMonth()], users: 0, prompts: 0, order: i };
+    }
+
+    // Fetch users grouped by month
+    const usersByMonth = await db.collection('users').aggregate([
+      { $match: { createdAt: { $gte: sixMonthsAgo } } },
+      { $group: {
+          _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+          count: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    usersByMonth.forEach(item => {
+      if (item._id.month) {
+        const key = `${item._id.year}-${item._id.month - 1}`;
+        if (chartDataMap[key]) {
+          chartDataMap[key].users = item.count;
+        }
+      }
+    });
+
+    // Fetch prompts grouped by month
+    const promptsByMonth = await db.collection('prompts').aggregate([
+      { $match: { createdAt: { $gte: sixMonthsAgo } } },
+      { $group: {
+          _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+          count: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    promptsByMonth.forEach(item => {
+      if (item._id.month) {
+        const key = `${item._id.year}-${item._id.month - 1}`;
+        if (chartDataMap[key]) {
+          chartDataMap[key].prompts = item.count;
+        }
+      }
+    });
+
+    const chartData = Object.values(chartDataMap).sort((a, b) => a.order - b.order).map(({ name, users, prompts }) => ({ name, users, prompts }));
+
     res.send({
       totalUsers,
       totalPrompts,
       totalReviews,
-      totalRevenue
+      totalRevenue,
+      chartData
     });
   } catch (error) {
     res.status(500).send({ message: 'Error fetching admin analytics', error });

@@ -134,12 +134,42 @@ router.get('/admin/analytics', verifyToken, verifyAdmin, async (req, res) => {
 
     const chartData = Object.values(chartDataMap).sort((a, b) => a.order - b.order).map(({ name, users, prompts }) => ({ name, users, prompts }));
 
+    // Fetch Engine Prompts & Copies stats
+    const engineAgg = await db.collection('prompts').aggregate([
+      { 
+        $group: { 
+          _id: "$aiTool", 
+          prompts: { $sum: 1 },
+          copies: { $sum: "$copyCount" }
+        } 
+      }
+    ]).toArray();
+
+    const defaultEngines = ["ChatGPT", "Gemini", "Claude", "Stable Diffusion", "Midjourney"];
+    const engineMap = {};
+    defaultEngines.forEach(e => { engineMap[e] = { name: e, prompts: 0, copies: 0 }; });
+
+    engineAgg.forEach(item => {
+      const name = item._id || "Other";
+      if (engineMap[name]) {
+        engineMap[name].prompts = item.prompts || 0;
+        engineMap[name].copies = item.copies || 0;
+      } else {
+        engineMap[name] = { name, prompts: item.prompts || 0, copies: item.copies || 0 };
+      }
+    });
+
+    const engineStats = defaultEngines.map(e => engineMap[e]).concat(
+      Object.values(engineMap).filter(e => !defaultEngines.includes(e.name))
+    );
+
     res.send({
       totalUsers,
       totalPrompts,
       totalReviews,
       totalRevenue,
-      chartData
+      chartData,
+      engineStats
     });
   } catch (error) {
     res.status(500).send({ message: 'Error fetching admin analytics', error });

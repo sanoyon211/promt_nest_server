@@ -79,6 +79,12 @@ router.get('/admin/analytics', verifyToken, verifyAdmin, async (req, res) => {
     const totalPromptsAgg = await db.collection('prompts').aggregate([{ $count: 'totalPrompts' }]).toArray();
     const totalPrompts = totalPromptsAgg[0]?.totalPrompts || 0;
 
+    // Fetch Total Copies
+    const totalCopiesAgg = await db.collection('prompts').aggregate([
+      { $group: { _id: null, totalCopies: { $sum: "$copyCount" } } }
+    ]).toArray();
+    const totalCopies = totalCopiesAgg[0]?.totalCopies || 0;
+
     // Generate last 6 months chart data
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
@@ -168,6 +174,7 @@ router.get('/admin/analytics', verifyToken, verifyAdmin, async (req, res) => {
       totalPrompts,
       totalReviews,
       totalRevenue,
+      totalCopies,
       chartData,
       engineStats
     });

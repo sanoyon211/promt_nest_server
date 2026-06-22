@@ -39,6 +39,7 @@ router.get('/creators/top', async (req, res) => {
             $cond: { if: { $eq: ["$userInfo.subscription", "Premium"] }, then: "Pro Creator", else: "Creator" }
           },
           prompts: "$promptsCount",
+          totalCopies: "$totalCopies",
           email: "$_id"
         }
       }
@@ -49,7 +50,8 @@ router.get('/creators/top', async (req, res) => {
       name: c.name || c.email.split('@')[0],
       photoURL: c.photoURL,
       role: c.role,
-      prompts: c.prompts
+      prompts: c.prompts,
+      totalCopies: c.totalCopies || 0
     }));
 
     res.send(formatted);

@@ -19,6 +19,15 @@ router.get('/admin/reports', verifyToken, verifyAdmin, async (req, res) => {
         }
       },
       { $unwind: { path: "$prompt", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "reporterEmail",
+          foreignField: "email",
+          as: "reporter"
+        }
+      },
+      { $unwind: { path: "$reporter", preserveNullAndEmptyArrays: true } },
       { $sort: { reportedAt: -1 } }
     ]).toArray();
     res.send(reports);

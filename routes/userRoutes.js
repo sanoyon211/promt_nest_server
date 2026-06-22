@@ -77,6 +77,15 @@ router.get('/user/bookmarks', verifyToken, async (req, res) => {
         }
       },
       { $unwind: "$prompt" },
+      {
+        $lookup: {
+          from: "users",
+          localField: "prompt.creatorEmail",
+          foreignField: "email",
+          as: "prompt.creator"
+        }
+      },
+      { $unwind: { path: "$prompt.creator", preserveNullAndEmptyArrays: true } },
       { $sort: { createdAt: -1 } }
     ]).toArray();
     res.send(bookmarks);
@@ -102,6 +111,15 @@ router.get('/user/copied', verifyToken, async (req, res) => {
         }
       },
       { $unwind: "$prompt" },
+      {
+        $lookup: {
+          from: "users",
+          localField: "prompt.creatorEmail",
+          foreignField: "email",
+          as: "prompt.creator"
+        }
+      },
+      { $unwind: { path: "$prompt.creator", preserveNullAndEmptyArrays: true } },
       { $sort: { copiedAt: -1 } }
     ]).toArray();
     res.send(copied);

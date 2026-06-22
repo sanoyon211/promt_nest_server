@@ -70,17 +70,24 @@ router.post('/prompts', verifyToken, async (req, res) => {
       return res.status(404).send({ message: 'User not found' });
     }
     
+    // Extract and format the prompt data
+    const {
+      title, description, content, category, aiTool, tags, difficultyLevel, difficulty, thumbnailImage, visibility, level
+    } = req.body;
+
+    const finalDifficulty = difficultyLevel || difficulty || level || 'Beginner';
+    const finalVisibility = visibility || 'Public';
+
     if (user.subscription === 'Free') {
+      if (finalDifficulty === 'Pro' || finalVisibility === 'Private') {
+        return res.status(403).send({ message: 'Only Premium users can create Private or Pro prompts.' });
+      }
+
       const promptCount = await db.collection('prompts').countDocuments({ creatorEmail: email });
       if (promptCount >= 3) {
         return res.status(403).send({ message: 'Free users can only add a maximum of 3 prompts.' });
       }
     }
-    
-    // Extract and format the prompt data
-    const {
-      title, description, content, category, aiTool, tags, difficultyLevel, thumbnailImage, visibility
-    } = req.body;
     
     const newPrompt = {
       title,
@@ -89,9 +96,10 @@ router.post('/prompts', verifyToken, async (req, res) => {
       category,
       aiTool,
       tags: tags || [],
-      difficultyLevel,
+      level: finalDifficulty,
+      difficultyLevel: finalDifficulty,
       thumbnailImage,
-      visibility: visibility || 'Public',
+      visibility: finalVisibility,
       status: 'pending',
       copyCount: 0,
       creatorEmail: email,
@@ -162,10 +170,26 @@ router.get('/prompts', async (req, res) => {
     const skip = (pageNumber - 1) * limitNumber;
 
     const prompts = await db.collection('prompts')
-      .find(query)
-      .sort(sortObj)
-      .skip(skip)
-      .limit(limitNumber)
+      .aggregate([
+        { $match: query },
+        { $sort: sortObj },
+        { $skip: skip },
+        { $limit: limitNumber },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'creatorEmail',
+            foreignField: 'email',
+            as: 'creator'
+          }
+        },
+        {
+          $unwind: {
+            path: '$creator',
+            preserveNullAndEmptyArrays: true
+          }
+        }
+      ])
       .toArray();
 
     const total = await db.collection('prompts').countDocuments(query);
@@ -187,7 +211,24 @@ router.get('/prompts/my-prompts', verifyToken, async (req, res) => {
   try {
     const email = req.decoded.email;
     const db = getDB();
-    const prompts = await db.collection('prompts').find({ creatorEmail: email }).sort({ createdAt: -1 }).toArray();
+    const prompts = await db.collection('prompts').aggregate([
+      { $match: { creatorEmail: email } },
+      { $sort: { createdAt: -1 } },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'creatorEmail',
+          foreignField: 'email',
+          as: 'creator'
+        }
+      },
+      {
+        $unwind: {
+          path: '$creator',
+          preserveNullAndEmptyArrays: true
+        }
+      }
+    ]).toArray();
     res.send(prompts);
   } catch (error) {
     res.status(500).send({ message: 'Error fetching my prompts', error });
@@ -203,7 +244,25 @@ router.get('/prompts/:id', async (req, res) => {
     }
 
     const db = getDB();
-    const prompt = await db.collection('prompts').findOne({ _id: new ObjectId(id) });
+    const promptArray = await db.collection('prompts').aggregate([
+      { $match: { _id: new ObjectId(id) } },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'creatorEmail',
+          foreignField: 'email',
+          as: 'creator'
+        }
+      },
+      {
+        $unwind: {
+          path: '$creator',
+          preserveNullAndEmptyArrays: true
+        }
+      }
+    ]).toArray();
+    
+    const prompt = promptArray[0];
 
     if (!prompt) {
       return res.status(404).send({ message: 'Prompt not found' });
@@ -350,8 +409,18 @@ router.put('/prompts/:id', verifyToken, async (req, res) => {
     }
     
     const {
-      title, description, content, category, aiTool, tags, difficultyLevel, thumbnailImage, visibility
+      title, description, content, category, aiTool, tags, difficultyLevel, difficulty, thumbnailImage, visibility, level
     } = req.body;
+
+    const finalDifficulty = difficultyLevel || difficulty || level || prompt.level || prompt.difficultyLevel || 'Beginner';
+    const finalVisibility = visibility || prompt.visibility || 'Public';
+
+    const user = await db.collection('users').findOne({ email: req.decoded.email });
+    if (user?.subscription === 'Free') {
+      if (finalDifficulty === 'Pro' || finalVisibility === 'Private') {
+        return res.status(403).send({ message: 'Only Premium users can create or update to Private or Pro prompts.' });
+      }
+    }
     
     const updateDoc = {
       $set: {
@@ -361,7 +430,8 @@ router.put('/prompts/:id', verifyToken, async (req, res) => {
         category: category || prompt.category,
         aiTool: aiTool || prompt.aiTool,
         tags: tags || prompt.tags,
-        difficultyLevel: difficultyLevel || prompt.difficultyLevel,
+        level: finalDifficulty,
+        difficultyLevel: finalDifficulty,
         thumbnailImage: thumbnailImage || prompt.thumbnailImage,
         visibility: visibility || prompt.visibility,
         // Optional: revert to pending status on edit

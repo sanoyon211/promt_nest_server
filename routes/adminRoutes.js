@@ -22,6 +22,15 @@ router.get('/admin/reports', verifyToken, verifyAdmin, async (req, res) => {
       {
         $lookup: {
           from: "users",
+          localField: "prompt.creatorEmail",
+          foreignField: "email",
+          as: "prompt.creator"
+        }
+      },
+      { $unwind: { path: "$prompt.creator", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "users",
           localField: "reporterEmail",
           foreignField: "email",
           as: "reporter"
@@ -44,7 +53,25 @@ router.get('/admin/prompts', verifyToken, verifyAdmin, async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const prompts = await db.collection('prompts').find().sort({ createdAt: -1 }).skip(skip).limit(limit).toArray();
+    const prompts = await db.collection('prompts').aggregate([
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'creatorEmail',
+          foreignField: 'email',
+          as: 'creator'
+        }
+      },
+      {
+        $unwind: {
+          path: '$creator',
+          preserveNullAndEmptyArrays: true
+        }
+      }
+    ]).toArray();
     const total = await db.collection('prompts').countDocuments();
 
     res.send({ data: prompts, total, page, totalPages: Math.ceil(total / limit) });

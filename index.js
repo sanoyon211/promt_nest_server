@@ -22,6 +22,15 @@ app.use(cors({
 // Middleware to parse JSON
 app.use(express.json());
 
+// Global Middleware to disable browser caching of API responses
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.set('Surrogate-Control', 'no-store');
+  next();
+});
+
 // Register API Routes
 app.use('/', authRoutes);
 app.use('/', userRoutes);

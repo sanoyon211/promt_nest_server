@@ -237,6 +237,21 @@ router.get('/prompts/:id', async (req, res) => {
   }
 });
 
+// Get bookmark status
+router.get('/prompts/:id/bookmark-status', verifyToken, async (req, res) => {
+  try {
+    const promptId = req.params.id;
+    if (!ObjectId.isValid(promptId)) return res.status(400).send({ message: 'Invalid ID format' });
+    
+    const email = req.decoded.email;
+    const db = getDB();
+    const bookmark = await db.collection('bookmarks').findOne({ email, promptId });
+    res.send({ isBookmarked: !!bookmark });
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching bookmark status', error });
+  }
+});
+
 // Toggle bookmark for a prompt
 router.post('/prompts/:id/bookmark', verifyToken, async (req, res) => {
   try {

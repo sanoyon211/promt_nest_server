@@ -448,7 +448,25 @@ router.get('/reviews', async (req, res) => {
   try {
     const db = getDB();
     // Fetch 15 latest reviews with at least 4 star rating
-    const reviews = await db.collection('reviews').find({ rating: { $gte: 4 } }).sort({ date: -1 }).limit(15).toArray();
+    const reviews = await db.collection('reviews').aggregate([
+      { $match: { rating: { $gte: 4 } } },
+      { $sort: { date: -1 } },
+      { $limit: 15 },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'email',
+          foreignField: 'email',
+          as: 'user'
+        }
+      },
+      {
+        $unwind: {
+          path: '$user',
+          preserveNullAndEmptyArrays: true
+        }
+      }
+    ]).toArray();
     res.send(reviews);
   } catch (error) {
     res.status(500).send({ message: 'Error fetching recent reviews', error });

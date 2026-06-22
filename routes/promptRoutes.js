@@ -139,7 +139,7 @@ router.get('/prompts', async (req, res) => {
   try {
     const db = getDB();
     const {
-      search, category, aiTool, difficulty, sort, page = 1, limit = 10
+      search, category, aiTool, difficulty, level, sort, page = 1, limit = 10
     } = req.query;
 
     const query = {
@@ -158,7 +158,9 @@ router.get('/prompts', async (req, res) => {
 
     if (category) query.category = category;
     if (aiTool) query.aiTool = aiTool;
-    if (difficulty) query.difficultyLevel = difficulty;
+    
+    const filterDifficulty = difficulty || level;
+    if (filterDifficulty) query.difficultyLevel = filterDifficulty;
 
     let sortObj = { createdAt: -1 };
     if (sort === 'most-copied') {

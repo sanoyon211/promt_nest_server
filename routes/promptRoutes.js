@@ -34,6 +34,7 @@ router.get('/creators/top', async (req, res) => {
         $project: {
           _id: "$userInfo._id",
           name: "$userInfo.name",
+          photoURL: "$userInfo.photoURL",
           role: { 
             $cond: { if: { $eq: ["$userInfo.subscription", "Premium"] }, then: "Pro Creator", else: "Creator" }
           },
@@ -46,6 +47,7 @@ router.get('/creators/top', async (req, res) => {
     const formatted = topCreators.map(c => ({
       id: c._id.toString(),
       name: c.name || c.email.split('@')[0],
+      photoURL: c.photoURL,
       role: c.role,
       prompts: c.prompts
     }));

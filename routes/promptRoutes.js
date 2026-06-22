@@ -78,7 +78,9 @@ router.post('/prompts', verifyToken, async (req, res) => {
     const finalDifficulty = difficultyLevel || difficulty || level || 'Beginner';
     const finalVisibility = visibility || 'Public';
 
-    if (user.subscription === 'Free') {
+    const isAdmin = user?.role?.toLowerCase() === 'admin';
+
+    if (user.subscription === 'Free' && !isAdmin) {
       if (finalDifficulty === 'Pro' || finalVisibility === 'Private') {
         return res.status(403).send({ message: 'Only Premium users can create Private or Pro prompts.' });
       }
@@ -100,7 +102,7 @@ router.post('/prompts', verifyToken, async (req, res) => {
       difficultyLevel: finalDifficulty,
       thumbnailImage,
       visibility: finalVisibility,
-      status: 'pending',
+      status: isAdmin ? 'approved' : 'pending',
       copyCount: 0,
       creatorEmail: email,
       createdAt: new Date()
@@ -416,7 +418,9 @@ router.put('/prompts/:id', verifyToken, async (req, res) => {
     const finalVisibility = visibility || prompt.visibility || 'Public';
 
     const user = await db.collection('users').findOne({ email: req.decoded.email });
-    if (user?.subscription === 'Free') {
+    const isAdmin = user?.role?.toLowerCase() === 'admin';
+    
+    if (user?.subscription === 'Free' && !isAdmin) {
       if (finalDifficulty === 'Pro' || finalVisibility === 'Private') {
         return res.status(403).send({ message: 'Only Premium users can create or update to Private or Pro prompts.' });
       }

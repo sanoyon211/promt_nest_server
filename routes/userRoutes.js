@@ -42,6 +42,9 @@ router.get('/users/:email', verifyToken, async (req, res) => {
     
     const db = getDB();
     const user = await db.collection('users').findOne({ email });
+    if (user) {
+      user.totalPrompts = await db.collection('prompts').countDocuments({ creatorEmail: email });
+    }
     res.send(user);
   } catch (error) {
     res.status(500).send({ message: 'Error fetching user', error });

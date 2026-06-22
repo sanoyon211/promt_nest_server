@@ -412,4 +412,15 @@ router.post('/admin/settings', verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
+// Fetch Public Settings (e.g. Maintenance Mode)
+router.get('/settings/public', async (req, res) => {
+  try {
+    const db = getDB();
+    const settings = await db.collection('settings').findOne({ _id: 'global_settings' });
+    res.send({ maintenanceMode: settings?.maintenanceMode || false });
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching public settings', error });
+  }
+});
+
 module.exports = router;

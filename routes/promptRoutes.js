@@ -416,11 +416,11 @@ router.post('/prompts/:id/copy', verifyToken, async (req, res) => {
     const db = getDB();
     
     // Track the copy
-    await db.collection('copied_prompts').insertOne({
-      email,
-      promptId: id,
-      copiedAt: new Date()
-    });
+    await db.collection('copied_prompts').updateOne(
+      { email, promptId: id },
+      { $set: { copiedAt: new Date() } },
+      { upsert: true }
+    );
 
     const result = await db.collection('prompts').updateOne(
       { _id: new ObjectId(id) },

@@ -104,6 +104,10 @@ router.get('/user/copied', verifyToken, async (req, res) => {
     const db = getDB();
     const copied = await db.collection('copied_prompts').aggregate([
       { $match: { email } },
+      { $sort: { copiedAt: -1 } },
+      { $group: { _id: "$promptId", doc: { $first: "$$ROOT" } } },
+      { $replaceRoot: { newRoot: "$doc" } },
+      { $sort: { copiedAt: -1 } },
       { $addFields: { promptObjId: { $toObjectId: "$promptId" } } },
       {
         $lookup: {

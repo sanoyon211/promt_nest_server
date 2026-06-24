@@ -11,7 +11,6 @@ router.get('/creators/top', async (req, res) => {
   try {
     const db = getDB();
     const topCreators = await db.collection('prompts').aggregate([
-      { $match: { status: 'approved', visibility: 'Public' } },
       { 
         $group: { 
           _id: "$creatorEmail", 

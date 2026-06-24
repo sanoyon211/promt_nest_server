@@ -242,6 +242,67 @@ router.get('/prompts/my-prompts', verifyToken, async (req, res) => {
   }
 });
 
+// Fetch featured prompts for home page
+router.get('/prompts/featured', async (req, res) => {
+  try {
+    const db = getDB();
+    
+    // Fetch featured prompts
+    const featuredPrompts = await db.collection('prompts').aggregate([
+      { $match: { status: 'approved', isFeatured: true } },
+      { $sort: { createdAt: -1 } },
+      { $limit: 6 },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'creatorEmail',
+          foreignField: 'email',
+          as: 'creator'
+        }
+      },
+      {
+        $unwind: {
+          path: '$creator',
+          preserveNullAndEmptyArrays: true
+        }
+      }
+    ]).toArray();
+
+    let results = [...featuredPrompts];
+
+    if (results.length < 6) {
+      const remaining = 6 - results.length;
+      const featuredIds = results.map(p => p._id);
+      
+      const additionalPrompts = await db.collection('prompts').aggregate([
+        { $match: { status: 'approved', _id: { $nin: featuredIds } } },
+        { $sort: { copyCount: -1, rating: -1, createdAt: -1 } },
+        { $limit: remaining },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'creatorEmail',
+            foreignField: 'email',
+            as: 'creator'
+          }
+        },
+        {
+          $unwind: {
+            path: '$creator',
+            preserveNullAndEmptyArrays: true
+          }
+        }
+      ]).toArray();
+      
+      results = [...results, ...additionalPrompts];
+    }
+
+    res.send({ data: results });
+  } catch (error) {
+    res.status(500).send({ message: 'Error fetching featured prompts', error });
+  }
+});
+
 // Fetch single prompt by ID with visibility logic
 router.get('/prompts/:id', async (req, res) => {
   try {

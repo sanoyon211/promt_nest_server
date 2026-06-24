@@ -251,6 +251,13 @@ router.post('/admin/prompts/:id/feature', verifyToken, verifyAdmin, async (req, 
     const prompt = await db.collection('prompts').findOne({ _id: new ObjectId(id) });
     const isCurrentlyFeatured = prompt.isFeatured || false;
 
+    if (!isCurrentlyFeatured) {
+      const featuredCount = await db.collection('prompts').countDocuments({ isFeatured: true });
+      if (featuredCount >= 6) {
+        return res.status(400).send({ message: 'Maximum 6 prompts can be featured. Please unfeature a prompt first.' });
+      }
+    }
+
     const result = await db.collection('prompts').updateOne(
       { _id: new ObjectId(id) },
       { $set: { isFeatured: !isCurrentlyFeatured } }

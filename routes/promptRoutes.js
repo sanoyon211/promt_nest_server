@@ -18,8 +18,8 @@ router.get('/creators/top', async (req, res) => {
           totalCopies: { $sum: "$copyCount" }
         } 
       },
-      { $sort: { totalCopies: -1, promptsCount: -1 } },
-      { $limit: 3 },
+      { $sort: { promptsCount: -1 } },
+      { $limit: 6 },
       {
         $lookup: {
           from: "users",

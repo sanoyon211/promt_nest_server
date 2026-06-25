@@ -56,7 +56,20 @@ router.get('/user/reviews', verifyToken, async (req, res) => {
   try {
     const email = req.decoded.email;
     const db = getDB();
-    const reviews = await db.collection('reviews').find({ email }).sort({ date: -1 }).toArray();
+    const reviews = await db.collection('reviews').aggregate([
+      { $match: { email } },
+      { $addFields: { promptObjId: { $toObjectId: "$promptId" } } },
+      {
+        $lookup: {
+          from: "prompts",
+          localField: "promptObjId",
+          foreignField: "_id",
+          as: "prompt"
+        }
+      },
+      { $unwind: { path: "$prompt", preserveNullAndEmptyArrays: true } },
+      { $sort: { date: -1 } }
+    ]).toArray();
     res.send(reviews);
   } catch (error) {
     res.status(500).send({ message: 'Error fetching reviews', error });
